@@ -39,12 +39,12 @@
     const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
     const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
     const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-    storage: window.localStorage
-  }
-})
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        storage: window.localStorage
+      }
+    })
 
     document.getElementById('login-btn').addEventListener('click', async () => {
       const email    = document.getElementById('email').value.trim()
@@ -83,6 +83,8 @@
         window.location.href = 'teacher/dashboard.html'
       } else if (profile?.role === 'student') {
         window.location.href = 'student/dashboard.html'
+      } else if (profile?.role === 'admin') {
+        window.location.href = 'admin/dashboard.html'
       } else {
         errorEl.textContent = 'Account not set up. Contact your administrator.'
         errorEl.classList.remove('hidden')

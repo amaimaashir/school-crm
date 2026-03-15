@@ -1,0 +1,767 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Admin Panel</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .tab-bar {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 24px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0;
+    }
+    .tab-btn {
+      padding: 10px 20px;
+      border: none;
+      background: none;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.15s;
+    }
+    .tab-btn.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    .tab-btn:hover { color: var(--primary); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .user-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      margin-bottom: 8px;
+      background: var(--white);
+    }
+    .user-row:hover { background: var(--bg); }
+    .user-info { flex: 1; }
+    .user-name { font-size: 14px; font-weight: 600; color: var(--text-main); }
+    .user-meta { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .user-actions { display: flex; gap: 8px; }
+    .btn-small {
+      padding: 5px 12px;
+      border-radius: var(--radius);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid;
+      transition: background 0.15s;
+    }
+    .btn-reset {
+      color: var(--primary);
+      border-color: var(--primary);
+      background: var(--white);
+    }
+    .btn-reset:hover { background: var(--primary-light); }
+    .btn-delete {
+      color: var(--danger);
+      border-color: var(--danger);
+      background: var(--white);
+    }
+    .btn-delete:hover { background: #fef2f2; }
+    .bulk-textarea {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      min-height: 140px;
+      resize: vertical;
+      outline: none;
+      font-family: monospace;
+    }
+    .bulk-textarea:focus { border-color: var(--primary); }
+    .progress-bar {
+      width: 100%;
+      height: 8px;
+      background: var(--border);
+      border-radius: 4px;
+      margin-top: 12px;
+      overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 4px;
+      transition: width 0.3s;
+      width: 0%;
+    }
+    .stats-mini {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .stat-mini {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      text-align: center;
+    }
+    .stat-mini-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--primary);
+    }
+    .stat-mini-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body class="dashboard-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>School CRM</h2>
+      <p style="font-size:11px;color:var(--danger);font-weight:600">ADMIN PANEL</p>
+    </div>
+    <nav>
+      <a href="dashboard.html" class="active">Admin Dashboard</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-danger" id="logout-btn" style="width:100%">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <h1>Admin Dashboard</h1>
+      <p>Manage all teachers, students and sections.</p>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-mini">
+      <div class="stat-mini">
+        <div class="stat-mini-value" id="stat-teachers">—</div>
+        <div class="stat-mini-label">Teachers</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-value" id="stat-students">—</div>
+        <div class="stat-mini-label">Students</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-value" id="stat-sections">—</div>
+        <div class="stat-mini-label">Sections</div>
+      </div>
+      <div class="stat-mini">
+        <div class="stat-mini-value" id="stat-homework">—</div>
+        <div class="stat-mini-label">Homework</div>
+      </div>
+    </div>
+
+    <!-- TABS -->
+    <div class="card">
+      <div class="tab-bar">
+        <button class="tab-btn active" onclick="showTab('add-teacher')">Add Teacher</button>
+        <button class="tab-btn" onclick="showTab('add-students')">Add Students (Bulk)</button>
+        <button class="tab-btn" onclick="showTab('manage-teachers')">Manage Teachers</button>
+        <button class="tab-btn" onclick="showTab('manage-students')">Manage Students</button>
+      </div>
+
+      <!-- TAB: ADD TEACHER -->
+      <div class="tab-panel active" id="tab-add-teacher">
+        <div class="card-title">Add New Teacher</div>
+        <div id="teacher-msg" class="hidden"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="t-name" placeholder="e.g. Mrs. Sara Ahmed" />
+          </div>
+          <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="t-email" placeholder="teacher@school.com" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Password</label>
+          <input type="text" id="t-password" placeholder="Set a password for this teacher" />
+        </div>
+
+        <button class="btn-primary" id="add-teacher-btn" style="width:auto;padding:10px 28px">
+          Add Teacher
+        </button>
+      </div>
+
+      <!-- TAB: ADD STUDENTS BULK -->
+      <div class="tab-panel" id="tab-add-students">
+        <div class="card-title">Add Students in Bulk</div>
+        <div id="students-msg" class="hidden"></div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+          <div class="form-group">
+            <label>Assign to Section</label>
+            <select id="bulk-section">
+              <option value="">— Select section —</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Default Password for all</label>
+            <input type="text" id="bulk-password" placeholder="e.g. student123" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Student Names & Emails (one per line)</label>
+          <p style="font-size:12px;color:var(--text-muted);margin-bottom:6px">
+            Format: <strong>Full Name, email@school.com, rollnumber</strong> — one student per line
+          </p>
+          <textarea class="bulk-textarea" id="bulk-students" placeholder="Ahmed Ali, ahmed@school.com, 01
+Sara Khan, sara@school.com, 02
+Usman Malik, usman@school.com, 03"></textarea>
+        </div>
+
+        <button class="btn-primary" id="add-students-btn" style="width:auto;padding:10px 28px">
+          Add All Students
+        </button>
+        <div class="progress-bar" id="progress-bar" style="display:none">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <p id="progress-text" style="font-size:12px;color:var(--text-muted);margin-top:6px"></p>
+      </div>
+
+      <!-- TAB: MANAGE TEACHERS -->
+      <div class="tab-panel" id="tab-manage-teachers">
+        <div class="card-title">All Teachers</div>
+        <div id="teachers-list">
+          <p style="color:var(--text-muted)">Loading...</p>
+        </div>
+      </div>
+
+      <!-- TAB: MANAGE STUDENTS -->
+      <div class="tab-panel" id="tab-manage-students">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span>All Students</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <label style="font-size:13px;color:var(--text-muted)">Filter by section:</label>
+            <select id="filter-section" onchange="filterStudents()" style="padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px">
+              <option value="">All sections</option>
+            </select>
+          </div>
+        </div>
+        <div id="students-list" style="margin-top:16px">
+          <p style="color:var(--text-muted)">Loading...</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- RESET PASSWORD MODAL -->
+  <div id="reset-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+    <div style="background:var(--white);border-radius:16px;padding:32px;width:100%;max-width:400px;margin:20px">
+      <h3 style="margin-bottom:16px;font-size:18px">Reset Password</h3>
+      <p id="reset-name" style="font-size:14px;color:var(--text-muted);margin-bottom:16px"></p>
+      <div class="form-group">
+        <label>New Password</label>
+        <input type="text" id="reset-password" placeholder="Enter new password" />
+      </div>
+      <div id="reset-msg" class="hidden"></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn-primary" id="confirm-reset-btn" style="width:auto;padding:10px 24px">Save Password</button>
+        <button class="btn-secondary" onclick="closeResetModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ASSIGN SECTION MODAL -->
+  <div id="section-modal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center">
+    <div style="background:var(--white);border-radius:16px;padding:32px;width:100%;max-width:400px;margin:20px">
+      <h3 style="margin-bottom:16px;font-size:18px">Assign Section</h3>
+      <p id="section-student-name" style="font-size:14px;color:var(--text-muted);margin-bottom:16px"></p>
+      <div class="form-group">
+        <label>Select Section</label>
+        <select id="modal-section-select">
+          <option value="">— Select section —</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Roll Number</label>
+        <input type="text" id="modal-roll" placeholder="e.g. 01" />
+      </div>
+      <div id="section-msg" class="hidden"></div>
+      <div style="display:flex;gap:10px;margin-top:16px">
+        <button class="btn-primary" id="confirm-section-btn" style="width:auto;padding:10px 24px">Save</button>
+        <button class="btn-secondary" onclick="closeSectionModal()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        storage: window.localStorage
+      }
+    })
+
+    // Service role key for creating users
+    const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzUwMDg2MCwiZXhwIjoyMDg5MDc2ODYwfQ.AVnDCI_PK3Lgn6HWywCSXTFXGDI_vpmWpE7eYOBP2fk'
+    const adminHeaders = {
+      'Content-Type': 'application/json',
+      'apikey': SERVICE_KEY,
+      'Authorization': `Bearer ${SERVICE_KEY}`
+    }
+
+    let allStudents = []
+    let currentResetUserId = null
+    let currentSectionStudentId = null
+    let sections = []
+
+    function showTab(tabName) {
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'))
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'))
+      document.getElementById(`tab-${tabName}`).classList.add('active')
+      event.target.classList.add('active')
+
+      if (tabName === 'manage-teachers') loadTeachers()
+      if (tabName === 'manage-students') loadStudents()
+    }
+
+    async function createUser(email, password, fullName, role, sectionId = null, rollNumber = null) {
+      // Create auth user via Supabase Admin API
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+        method: 'POST',
+        headers: adminHeaders,
+        body: JSON.stringify({
+          email,
+          password,
+          email_confirm: true
+        })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.message || data.error || 'Failed to create user')
+      }
+
+      const userId = data.id
+
+      // Insert profile
+      const { error: profileError } = await sb
+        .from('profiles')
+        .insert({ id: userId, full_name: fullName, role })
+
+      if (profileError) throw new Error(profileError.message)
+
+      // If student, create student_profile
+      if (role === 'student' && sectionId) {
+        const { error: spError } = await sb
+          .from('student_profiles')
+          .insert({ profile_id: userId, section_id: sectionId, roll_number: rollNumber })
+
+        if (spError) throw new Error(spError.message)
+      }
+
+      return userId
+    }
+
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.href = '../index.html'; return }
+
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', session.user.id)
+        .single()
+
+      if (!profile || profile.role !== 'admin') {
+        window.location.href = '../index.html'
+        return
+      }
+
+      // Load stats
+      const [teachers, students, secs, hw] = await Promise.all([
+        sb.from('profiles').select('id', { count: 'exact' }).eq('role', 'teacher'),
+        sb.from('profiles').select('id', { count: 'exact' }).eq('role', 'student'),
+        sb.from('sections').select('id', { count: 'exact' }),
+        sb.from('homework').select('id', { count: 'exact' })
+      ])
+
+      document.getElementById('stat-teachers').textContent = teachers.count ?? 0
+      document.getElementById('stat-students').textContent = students.count ?? 0
+      document.getElementById('stat-sections').textContent = secs.count ?? 0
+      document.getElementById('stat-homework').textContent = hw.count ?? 0
+
+      // Load sections for dropdowns
+      const { data: secData } = await sb.from('sections').select('id, name').order('name')
+      sections = secData ?? []
+
+      const bulkSection = document.getElementById('bulk-section')
+      const filterSection = document.getElementById('filter-section')
+      const modalSection = document.getElementById('modal-section-select')
+
+      sections.forEach(s => {
+        ;[bulkSection, filterSection, modalSection].forEach(el => {
+          const opt = document.createElement('option')
+          opt.value = s.id
+          opt.textContent = s.name
+          el.appendChild(opt)
+        })
+      })
+
+      // Add teacher
+      document.getElementById('add-teacher-btn').addEventListener('click', async () => {
+        const name     = document.getElementById('t-name').value.trim()
+        const email    = document.getElementById('t-email').value.trim()
+        const password = document.getElementById('t-password').value.trim()
+        const msgEl    = document.getElementById('teacher-msg')
+
+        if (!name || !email || !password) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please fill in all fields.'
+          return
+        }
+
+        document.getElementById('add-teacher-btn').textContent = 'Adding...'
+        document.getElementById('add-teacher-btn').disabled = true
+
+        try {
+          await createUser(email, password, name, 'teacher')
+          msgEl.className = 'success-box'
+          msgEl.textContent = `Teacher "${name}" added successfully!`
+          document.getElementById('t-name').value = ''
+          document.getElementById('t-email').value = ''
+          document.getElementById('t-password').value = ''
+
+          // Update stats
+          const { count } = await sb.from('profiles').select('id', { count: 'exact' }).eq('role', 'teacher')
+          document.getElementById('stat-teachers').textContent = count ?? 0
+        } catch (err) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = `Error: ${err.message}`
+        }
+
+        document.getElementById('add-teacher-btn').textContent = 'Add Teacher'
+        document.getElementById('add-teacher-btn').disabled = false
+      })
+
+      // Bulk add students
+      document.getElementById('add-students-btn').addEventListener('click', async () => {
+        const sectionId = document.getElementById('bulk-section').value
+        const password  = document.getElementById('bulk-password').value.trim()
+        const text      = document.getElementById('bulk-students').value.trim()
+        const msgEl     = document.getElementById('students-msg')
+
+        if (!sectionId || !password || !text) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please fill in section, password and student list.'
+          return
+        }
+
+        const lines = text.split('\n').filter(l => l.trim())
+        if (lines.length === 0) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please enter at least one student.'
+          return
+        }
+
+        document.getElementById('add-students-btn').disabled = true
+        document.getElementById('add-students-btn').textContent = 'Adding...'
+        document.getElementById('progress-bar').style.display = 'block'
+
+        let success = 0
+        let failed  = 0
+        const errors = []
+
+        for (let i = 0; i < lines.length; i++) {
+          const parts = lines[i].split(',').map(p => p.trim())
+          const name  = parts[0]
+          const email = parts[1]
+          const roll  = parts[2] ?? String(i + 1).padStart(2, '0')
+
+          if (!name || !email) {
+            failed++
+            errors.push(`Line ${i + 1}: invalid format`)
+            continue
+          }
+
+          try {
+            await createUser(email, password, name, 'student', sectionId, roll)
+            success++
+          } catch (err) {
+            failed++
+            errors.push(`${name}: ${err.message}`)
+          }
+
+          const pct = Math.round(((i + 1) / lines.length) * 100)
+          document.getElementById('progress-fill').style.width = pct + '%'
+          document.getElementById('progress-text').textContent = `${i + 1} of ${lines.length} processed...`
+        }
+
+        msgEl.className = success > 0 ? 'success-box' : 'error-box'
+        msgEl.textContent = `Done! ${success} added successfully${failed > 0 ? `, ${failed} failed` : ''}.`
+        if (errors.length > 0) {
+          msgEl.textContent += ' Errors: ' + errors.join(' | ')
+        }
+
+        // Update stats
+        const { count } = await sb.from('profiles').select('id', { count: 'exact' }).eq('role', 'student')
+        document.getElementById('stat-students').textContent = count ?? 0
+
+        document.getElementById('add-students-btn').disabled = false
+        document.getElementById('add-students-btn').textContent = 'Add All Students'
+        document.getElementById('progress-text').textContent = ''
+      })
+
+      // Logout
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await sb.auth.signOut()
+        window.location.href = '../index.html'
+      })
+    }
+
+    async function loadTeachers() {
+      const { data: teachers } = await sb
+        .from('profiles')
+        .select('id, full_name')
+        .eq('role', 'teacher')
+        .order('full_name')
+
+      const list = document.getElementById('teachers-list')
+
+      if (!teachers || teachers.length === 0) {
+        list.innerHTML = '<p style="color:var(--text-muted)">No teachers yet.</p>'
+        return
+      }
+
+      list.innerHTML = teachers.map(t => `
+        <div class="user-row">
+          <div class="user-info">
+            <div class="user-name">${t.full_name}</div>
+            <div class="user-meta">Teacher</div>
+          </div>
+          <div class="user-actions">
+            <button class="btn-small btn-reset" onclick="openResetModal('${t.id}', '${t.full_name}')">
+              Reset Password
+            </button>
+            <button class="btn-small btn-delete" onclick="deleteUser('${t.id}', '${t.full_name}', 'teacher')">
+              Delete
+            </button>
+          </div>
+        </div>
+      `).join('')
+    }
+
+    async function loadStudents(filterSectionId = '') {
+      let query = sb
+        .from('profiles')
+        .select('id, full_name, student_profiles(roll_number, section_id, sections(name))')
+        .eq('role', 'student')
+        .order('full_name')
+
+      const { data: students } = await query
+      allStudents = students ?? []
+
+      renderStudents(filterSectionId)
+    }
+
+    function renderStudents(filterSectionId = '') {
+      const list = document.getElementById('students-list')
+      let filtered = allStudents
+
+      if (filterSectionId) {
+        filtered = allStudents.filter(s =>
+          s.student_profiles?.some(sp => sp.section_id === filterSectionId)
+        )
+      }
+
+      if (filtered.length === 0) {
+        list.innerHTML = '<p style="color:var(--text-muted)">No students found.</p>'
+        return
+      }
+
+      list.innerHTML = filtered.map(s => {
+        const sp = s.student_profiles?.[0]
+        const sectionName = sp?.sections?.name ?? 'No section'
+        const roll = sp?.roll_number ?? '—'
+
+        return `
+          <div class="user-row">
+            <div class="user-info">
+              <div class="user-name">${s.full_name}</div>
+              <div class="user-meta">Roll: ${roll} &nbsp;|&nbsp; Section: ${sectionName}</div>
+            </div>
+            <div class="user-actions">
+              <button class="btn-small btn-reset" onclick="openSectionModal('${s.id}', '${s.full_name}', '${sp?.section_id ?? ''}', '${roll}')">
+                Change Section
+              </button>
+              <button class="btn-small btn-reset" onclick="openResetModal('${s.id}', '${s.full_name}')">
+                Reset Password
+              </button>
+              <button class="btn-small btn-delete" onclick="deleteUser('${s.id}', '${s.full_name}', 'student')">
+                Delete
+              </button>
+            </div>
+          </div>
+        `
+      }).join('')
+    }
+
+    function filterStudents() {
+      const sectionId = document.getElementById('filter-section').value
+      renderStudents(sectionId)
+    }
+
+    function openResetModal(userId, userName) {
+      currentResetUserId = userId
+      document.getElementById('reset-name').textContent = `Resetting password for: ${userName}`
+      document.getElementById('reset-password').value = ''
+      document.getElementById('reset-msg').className = 'hidden'
+      document.getElementById('reset-modal').style.display = 'flex'
+
+      document.getElementById('confirm-reset-btn').onclick = async () => {
+        const newPassword = document.getElementById('reset-password').value.trim()
+        const msgEl = document.getElementById('reset-msg')
+
+        if (!newPassword || newPassword.length < 6) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Password must be at least 6 characters.'
+          return
+        }
+
+        document.getElementById('confirm-reset-btn').textContent = 'Saving...'
+        document.getElementById('confirm-reset-btn').disabled = true
+
+        const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${currentResetUserId}`, {
+          method: 'PUT',
+          headers: adminHeaders,
+          body: JSON.stringify({ password: newPassword })
+        })
+
+        if (res.ok) {
+          msgEl.className = 'success-box'
+          msgEl.textContent = 'Password updated successfully!'
+          setTimeout(closeResetModal, 1500)
+        } else {
+          const err = await res.json()
+          msgEl.className = 'error-box'
+          msgEl.textContent = `Error: ${err.message}`
+        }
+
+        document.getElementById('confirm-reset-btn').textContent = 'Save Password'
+        document.getElementById('confirm-reset-btn').disabled = false
+      }
+    }
+
+    function closeResetModal() {
+      document.getElementById('reset-modal').style.display = 'none'
+    }
+
+    function openSectionModal(studentId, studentName, currentSectionId, currentRoll) {
+      currentSectionStudentId = studentId
+      document.getElementById('section-student-name').textContent = `Assigning section for: ${studentName}`
+      document.getElementById('modal-section-select').value = currentSectionId
+      document.getElementById('modal-roll').value = currentRoll === '—' ? '' : currentRoll
+      document.getElementById('section-msg').className = 'hidden'
+      document.getElementById('section-modal').style.display = 'flex'
+
+      document.getElementById('confirm-section-btn').onclick = async () => {
+        const sectionId = document.getElementById('modal-section-select').value
+        const roll      = document.getElementById('modal-roll').value.trim()
+        const msgEl     = document.getElementById('section-msg')
+
+        if (!sectionId) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please select a section.'
+          return
+        }
+
+        document.getElementById('confirm-section-btn').textContent = 'Saving...'
+        document.getElementById('confirm-section-btn').disabled = true
+
+        // Check if student_profile exists
+        const { data: existing } = await sb
+          .from('student_profiles')
+          .select('id')
+          .eq('profile_id', currentSectionStudentId)
+          .single()
+
+        let error
+        if (existing) {
+          const res = await sb
+            .from('student_profiles')
+            .update({ section_id: sectionId, roll_number: roll })
+            .eq('profile_id', currentSectionStudentId)
+          error = res.error
+        } else {
+          const res = await sb
+            .from('student_profiles')
+            .insert({ profile_id: currentSectionStudentId, section_id: sectionId, roll_number: roll })
+          error = res.error
+        }
+
+        if (error) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = `Error: ${error.message}`
+        } else {
+          msgEl.className = 'success-box'
+          msgEl.textContent = 'Section updated!'
+          await loadStudents(document.getElementById('filter-section').value)
+          setTimeout(closeSectionModal, 1500)
+        }
+
+        document.getElementById('confirm-section-btn').textContent = 'Save'
+        document.getElementById('confirm-section-btn').disabled = false
+      }
+    }
+
+    function closeSectionModal() {
+      document.getElementById('section-modal').style.display = 'none'
+    }
+
+    async function deleteUser(userId, userName, role) {
+      if (!confirm(`Are you sure you want to delete ${userName}? This cannot be undone.`)) return
+
+      // Delete profile first (cascades to student_profiles)
+      const { error: profileError } = await sb
+        .from('profiles')
+        .delete()
+        .eq('id', userId)
+
+      if (profileError) {
+        alert(`Error deleting profile: ${profileError.message}`)
+        return
+      }
+
+      // Delete auth user via admin API
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: adminHeaders
+      })
+
+      if (res.ok) {
+        alert(`${userName} has been deleted.`)
+        if (role === 'teacher') loadTeachers()
+        else loadStudents()
+      } else {
+        const err = await res.json()
+        alert(`Profile deleted but auth user error: ${err.message}`)
+      }
+    }
+
+    init()
+  </script>
+
+</body>
+</html>
