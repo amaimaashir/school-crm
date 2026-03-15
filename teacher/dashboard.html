@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Teacher Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="dashboard-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>School CRM</h2>
+      <p id="teacher-name">Loading...</p>
+    </div>
+    <nav>
+      <a href="dashboard.html" class="active">Dashboard</a>
+      <a href="diary.html">Diary</a>
+      <a href="homework.html">Homework</a>
+      <a href="tests.html">Tests</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-danger" id="logout-btn" style="width:100%">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+
+    <div class="page-header">
+      <h1>Dashboard</h1>
+      <p>Welcome back! Here's what's happening today.</p>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Diary Entries</div>
+        <div class="stat-value" id="stat-diary">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Homework Given</div>
+        <div class="stat-value" id="stat-homework">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Tests Created</div>
+        <div class="stat-value" id="stat-tests">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Submissions</div>
+        <div class="stat-value" id="stat-submissions">—</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-title">Recent Homework</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Subject</th>
+              <th>Section</th>
+              <th>Due Date</th>
+            </tr>
+          </thead>
+          <tbody id="homework-list">
+            <tr><td colspan="4" style="color:var(--text-muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Recent Tests</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Subject</th>
+              <th>Section</th>
+              <th>Time Limit</th>
+              <th>Available Until</th>
+            </tr>
+          </thead>
+          <tbody id="tests-list">
+            <tr><td colspan="5" style="color:var(--text-muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+})
+
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.href = '../index.html'; return }
+      const user = session.user
+
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile || profile.role !== 'teacher') {
+        window.location.href = '../index.html'
+        return
+      }
+
+      document.getElementById('teacher-name').textContent = profile.full_name
+
+      // Load stats
+      const [diary, homework, tests, submissions] = await Promise.all([
+        sb.from('diary_entries').select('id', { count: 'exact' }).eq('teacher_id', user.id),
+        sb.from('homework').select('id', { count: 'exact' }).eq('teacher_id', user.id),
+        sb.from('tests').select('id', { count: 'exact' }).eq('teacher_id', user.id),
+        sb.from('homework_submissions').select('id', { count: 'exact' })
+      ])
+
+      document.getElementById('stat-diary').textContent       = diary.count ?? 0
+      document.getElementById('stat-homework').textContent    = homework.count ?? 0
+      document.getElementById('stat-tests').textContent       = tests.count ?? 0
+      document.getElementById('stat-submissions').textContent = submissions.count ?? 0
+
+      // Load recent homework
+      const { data: hwList } = await sb
+        .from('homework')
+        .select('title, due_date, subjects(name), sections(name)')
+        .eq('teacher_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      const hwBody = document.getElementById('homework-list')
+      if (hwList && hwList.length > 0) {
+        hwBody.innerHTML = hwList.map(h => `
+          <tr>
+            <td>${h.title}</td>
+            <td>${h.subjects?.name ?? '—'}</td>
+            <td>${h.sections?.name ?? '—'}</td>
+            <td>${new Date(h.due_date).toLocaleDateString()}</td>
+          </tr>
+        `).join('')
+      } else {
+        hwBody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted)">No homework yet.</td></tr>'
+      }
+
+      // Load recent tests
+      const { data: testList } = await sb
+        .from('tests')
+        .select('title, time_limit_minutes, available_until, subjects(name), sections(name)')
+        .eq('teacher_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(5)
+
+      const testBody = document.getElementById('tests-list')
+      if (testList && testList.length > 0) {
+        testBody.innerHTML = testList.map(t => `
+          <tr>
+            <td>${t.title}</td>
+            <td>${t.subjects?.name ?? '—'}</td>
+            <td>${t.sections?.name ?? '—'}</td>
+            <td>${t.time_limit_minutes} mins</td>
+            <td>${new Date(t.available_until).toLocaleDateString()}</td>
+          </tr>
+        `).join('')
+      } else {
+        testBody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted)">No tests yet.</td></tr>'
+      }
+
+      // Logout
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await sb.auth.signOut()
+        window.location.href = '../index.html'
+      })
+    }
+
+    init()
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Submit Homework</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .deadline-box {
+      background: var(--primary-light);
+      border: 1.5px solid var(--primary);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .deadline-box.urgent {
+      background: #fef2f2;
+      border-color: var(--danger);
+    }
+    .deadline-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .deadline-time {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .countdown {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .countdown.urgent { color: var(--danger); }
+    .hw-details {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 20px;
+    }
+    .hw-details h2 {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .hw-details p {
+      font-size: 14px;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body class="dashboard-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>School CRM</h2>
+      <p id="student-name">Loading...</p>
+      <p id="student-section" style="font-size:11px;color:var(--primary);font-weight:600"></p>
+    </div>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="submit.html" class="active">Homework</a>
+      <a href="test.html">Tests</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-danger" id="logout-btn" style="width:100%">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <h1>Submit Homework</h1>
+      <p>Complete and submit your assigned homework.</p>
+    </div>
+
+    <div id="main-area">
+      <p style="color:var(--text-muted)">Loading homework...</p>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+})
+
+    let countdownInterval = null
+
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.href = '../index.html'; return }
+      const user = session.user
+
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile || profile.role !== 'student') {
+        window.location.href = '../index.html'
+        return
+      }
+
+      document.getElementById('student-name').textContent = profile.full_name
+
+      const { data: sp } = await sb
+        .from('student_profiles')
+        .select('section_id, sections(name)')
+        .eq('profile_id', user.id)
+        .single()
+
+      document.getElementById('student-section').textContent = sp?.sections?.name ?? ''
+
+      const mainArea = document.getElementById('main-area')
+
+      // Check if a specific homework id is in the URL
+      const params = new URLSearchParams(window.location.search)
+      const hwId = params.get('id')
+
+      if (hwId) {
+        await showHomeworkForm(hwId, user, mainArea)
+      } else {
+        await showHomeworkList(sp?.section_id, user, mainArea)
+      }
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await sb.auth.signOut()
+        window.location.href = '../index.html'
+      })
+    }
+
+    async function showHomeworkList(sectionId, user, mainArea) {
+      const { data: hwList } = await sb
+        .from('homework')
+        .select('id, title, due_date, description, subjects(name)')
+        .eq('section_id', sectionId)
+        .order('due_date', { ascending: true })
+
+      const { data: submitted } = await sb
+        .from('homework_submissions')
+        .select('homework_id')
+        .eq('student_id', user.id)
+
+      const submittedIds = submitted?.map(s => s.homework_id) ?? []
+
+      if (!hwList || hwList.length === 0) {
+        mainArea.innerHTML = '<div class="card"><p style="color:var(--text-muted)">No homework assigned yet.</p></div>'
+        return
+      }
+
+      mainArea.innerHTML = `
+        <div class="card">
+          <div class="card-title">All Homework</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Subject</th>
+                  <th>Due Date</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${hwList.map(h => {
+                  const due = new Date(h.due_date)
+                  const isOverdue = due < new Date()
+                  const isSubmitted = submittedIds.includes(h.id)
+                  const dueStr = due.toLocaleDateString() + ' ' + due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  return `
+                    <tr>
+                      <td>${h.title}</td>
+                      <td>${h.subjects?.name ?? '—'}</td>
+                      <td><span class="badge ${isOverdue && !isSubmitted ? 'badge-red' : 'badge-yellow'}">${dueStr}</span></td>
+                      <td>
+                        ${isSubmitted
+                          ? '<span class="badge badge-green">Submitted</span>'
+                          : isOverdue
+                            ? '<span class="badge badge-red">Overdue</span>'
+                            : '<span class="badge badge-yellow">Pending</span>'
+                        }
+                      </td>
+                      <td>
+                        ${!isSubmitted && !isOverdue
+                          ? `<a href="submit.html?id=${h.id}" class="btn-secondary" style="padding:5px 12px;font-size:12px">Submit</a>`
+                          : '—'
+                        }
+                      </td>
+                    </tr>
+                  `
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `
+    }
+
+    async function showHomeworkForm(hwId, user, mainArea) {
+      // Load homework details
+      const { data: hw } = await sb
+        .from('homework')
+        .select('id, title, description, due_date, subjects(name), sections(name)')
+        .eq('id', hwId)
+        .single()
+
+      if (!hw) {
+        mainArea.innerHTML = '<div class="card"><p style="color:var(--text-muted)">Homework not found.</p></div>'
+        return
+      }
+
+      // Check if already submitted
+      const { data: existing } = await sb
+        .from('homework_submissions')
+        .select('id, answer_text, submitted_at, marks_obtained, teacher_remarks')
+        .eq('homework_id', hwId)
+        .eq('student_id', user.id)
+        .single()
+
+      const due = new Date(hw.due_date)
+      const isOverdue = due < new Date()
+
+      if (existing) {
+        // Already submitted — show result
+        mainArea.innerHTML = `
+          <div class="hw-details">
+            <h2>${hw.title}</h2>
+            <p><strong>Subject:</strong> ${hw.subjects?.name ?? '—'}</p>
+            <p><strong>Section:</strong> ${hw.sections?.name ?? '—'}</p>
+            ${hw.description ? `<p style="margin-top:10px">${hw.description}</p>` : ''}
+          </div>
+          <div class="card">
+            <div class="card-title">Your Submission</div>
+            <div class="success-box" style="margin-bottom:16px">
+              Submitted on ${new Date(existing.submitted_at).toLocaleString()}
+            </div>
+            <div class="form-group">
+              <label>Your Answer</label>
+              <textarea readonly style="background:var(--bg);color:var(--text-muted)">${existing.answer_text ?? ''}</textarea>
+            </div>
+            ${existing.marks_obtained !== null ? `
+              <div class="form-group">
+                <label>Marks Obtained</label>
+                <p style="font-size:20px;font-weight:700;color:var(--primary)">${existing.marks_obtained}</p>
+              </div>
+            ` : ''}
+            ${existing.teacher_remarks ? `
+              <div class="form-group">
+                <label>Teacher Remarks</label>
+                <p style="font-size:14px;color:var(--text-muted)">${existing.teacher_remarks}</p>
+              </div>
+            ` : ''}
+            <a href="submit.html" class="btn-secondary" style="display:inline-block;margin-top:8px">← Back to Homework</a>
+          </div>
+        `
+        return
+      }
+
+      if (isOverdue) {
+        mainArea.innerHTML = `
+          <div class="hw-details">
+            <h2>${hw.title}</h2>
+            <p><strong>Subject:</strong> ${hw.subjects?.name ?? '—'}</p>
+          </div>
+          <div class="card">
+            <div class="error-box">The deadline for this homework has passed. You can no longer submit.</div>
+            <a href="submit.html" class="btn-secondary" style="display:inline-block;margin-top:12px">← Back to Homework</a>
+          </div>
+        `
+        return
+      }
+
+      // Show submission form with countdown
+      mainArea.innerHTML = `
+        <div class="hw-details">
+          <h2>${hw.title}</h2>
+          <p><strong>Subject:</strong> ${hw.subjects?.name ?? '—'} &nbsp;|&nbsp; <strong>Section:</strong> ${hw.sections?.name ?? '—'}</p>
+          ${hw.description ? `<p style="margin-top:10px">${hw.description}</p>` : ''}
+        </div>
+
+        <div class="deadline-box" id="deadline-box">
+          <div>
+            <div class="deadline-label">Time Remaining</div>
+            <div class="deadline-time">Due: ${due.toLocaleString()}</div>
+          </div>
+          <div class="countdown" id="countdown">--:--:--</div>
+        </div>
+
+        <div class="card">
+          <div id="submit-msg" class="hidden"></div>
+          <div class="form-group">
+            <label>Your Answer</label>
+            <textarea id="answer-text" placeholder="Write your answer here..." style="min-height:180px"></textarea>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center">
+            <button class="btn-primary" id="submit-btn" style="width:auto;padding:10px 28px">Submit Homework</button>
+            <a href="submit.html" class="btn-secondary">Cancel</a>
+          </div>
+        </div>
+      `
+
+      // Start countdown
+      function updateCountdown() {
+        const now = new Date()
+        const diff = due - now
+
+        if (diff <= 0) {
+          clearInterval(countdownInterval)
+          document.getElementById('countdown').textContent = 'EXPIRED'
+          document.getElementById('submit-btn').disabled = true
+          document.getElementById('deadline-box').classList.add('urgent')
+          return
+        }
+
+        const hours   = Math.floor(diff / (1000 * 60 * 60))
+        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+        const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
+        const timeStr = `${String(hours).padStart(2,'0')}:${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}`
+        document.getElementById('countdown').textContent = timeStr
+
+        // Turn red if less than 1 hour
+        if (diff < 60 * 60 * 1000) {
+          document.getElementById('countdown').classList.add('urgent')
+          document.getElementById('deadline-box').classList.add('urgent')
+        }
+      }
+
+      updateCountdown()
+      countdownInterval = setInterval(updateCountdown, 1000)
+
+      // Submit
+      document.getElementById('submit-btn').addEventListener('click', async () => {
+        const answer = document.getElementById('answer-text').value.trim()
+        const msgEl  = document.getElementById('submit-msg')
+
+        if (!answer) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please write your answer before submitting.'
+          return
+        }
+
+        document.getElementById('submit-btn').textContent = 'Submitting...'
+        document.getElementById('submit-btn').disabled = true
+
+        const { error } = await sb.from('homework_submissions').insert({
+          homework_id: hwId,
+          student_id:  user.id,
+          answer_text: answer
+        })
+
+        if (error) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Something went wrong. Please try again.'
+          console.error(error)
+          document.getElementById('submit-btn').textContent = 'Submit Homework'
+          document.getElementById('submit-btn').disabled = false
+        } else {
+          clearInterval(countdownInterval)
+          await showHomeworkForm(hwId, user, mainArea)
+        }
+      })
+    }
+
+    init()
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Student Dashboard</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="dashboard-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>School CRM</h2>
+      <p id="student-name">Loading...</p>
+      <p id="student-section" style="font-size:11px;color:var(--primary);font-weight:600"></p>
+    </div>
+    <nav>
+      <a href="dashboard.html" class="active">Dashboard</a>
+      <a href="submit.html">Homework</a>
+      <a href="test.html">Tests</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-danger" id="logout-btn" style="width:100%">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+
+    <div class="page-header">
+      <h1>My Dashboard</h1>
+      <p>Here's everything assigned to your class today.</p>
+    </div>
+
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-label">Pending Homework</div>
+        <div class="stat-value" id="stat-pending">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Submitted</div>
+        <div class="stat-value" id="stat-submitted">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Upcoming Tests</div>
+        <div class="stat-value" id="stat-tests">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Diary Entries</div>
+        <div class="stat-value" id="stat-diary">—</div>
+      </div>
+    </div>
+
+    <!-- TODAY'S DIARY -->
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-title">Today's Diary</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Subject</th>
+              <th>Content</th>
+              <th>Date</th>
+            </tr>
+          </thead>
+          <tbody id="diary-list">
+            <tr><td colspan="3" style="color:var(--text-muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- PENDING HOMEWORK -->
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-title">Pending Homework</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Subject</th>
+              <th>Due Date</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="homework-list">
+            <tr><td colspan="5" style="color:var(--text-muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- UPCOMING TESTS -->
+    <div class="card">
+      <div class="card-title">Upcoming Tests</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Subject</th>
+              <th>Time Limit</th>
+              <th>Available Until</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="tests-list">
+            <tr><td colspan="5" style="color:var(--text-muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+})
+
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.href = '../index.html'; return }
+      const user = session.user
+
+      // Get profile
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile || profile.role !== 'student') {
+        window.location.href = '../index.html'
+        return
+      }
+
+      document.getElementById('student-name').textContent = profile.full_name
+
+      // Get student section
+      const { data: sp } = await sb
+        .from('student_profiles')
+        .select('section_id, roll_number, sections(name)')
+        .eq('profile_id', user.id)
+        .single()
+
+      if (!sp) {
+        document.getElementById('student-section').textContent = 'No section assigned'
+        return
+      }
+
+      const sectionId = sp.section_id
+      document.getElementById('student-section').textContent = sp.sections?.name ?? ''
+
+      // Load today's diary
+      const today = new Date().toISOString().split('T')[0]
+      const { data: diary } = await sb
+        .from('diary_entries')
+        .select('entry_date, content, subjects(name)')
+        .eq('section_id', sectionId)
+        .eq('entry_date', today)
+        .order('created_at', { ascending: false })
+
+      const diaryBody = document.getElementById('diary-list')
+      if (diary && diary.length > 0) {
+        diaryBody.innerHTML = diary.map(d => `
+          <tr>
+            <td>${d.subjects?.name ?? '—'}</td>
+            <td>${d.content}</td>
+            <td>${new Date(d.entry_date).toLocaleDateString()}</td>
+          </tr>
+        `).join('')
+      } else {
+        diaryBody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted)">No diary entries today.</td></tr>'
+      }
+
+      // Load homework
+      const { data: hwList } = await sb
+        .from('homework')
+        .select('id, title, due_date, subjects(name)')
+        .eq('section_id', sectionId)
+        .order('due_date', { ascending: true })
+
+      // Get already submitted homework ids
+      const { data: submitted } = await sb
+        .from('homework_submissions')
+        .select('homework_id')
+        .eq('student_id', user.id)
+
+      const submittedIds = submitted?.map(s => s.homework_id) ?? []
+
+      const hwBody = document.getElementById('homework-list')
+      let pendingCount = 0
+      let submittedCount = 0
+
+      if (hwList && hwList.length > 0) {
+        hwBody.innerHTML = hwList.map(h => {
+          const due = new Date(h.due_date)
+          const isOverdue = due < new Date()
+          const isSubmitted = submittedIds.includes(h.id)
+          const dueStr = due.toLocaleDateString() + ' ' + due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+          if (isSubmitted) submittedCount++
+          else if (!isOverdue) pendingCount++
+
+          return `
+            <tr>
+              <td>${h.title}</td>
+              <td>${h.subjects?.name ?? '—'}</td>
+              <td><span class="badge ${isOverdue && !isSubmitted ? 'badge-red' : 'badge-yellow'}">${dueStr}</span></td>
+              <td>
+                ${isSubmitted
+                  ? '<span class="badge badge-green">Submitted</span>'
+                  : isOverdue
+                    ? '<span class="badge badge-red">Overdue</span>'
+                    : '<span class="badge badge-yellow">Pending</span>'
+                }
+              </td>
+              <td>
+                ${!isSubmitted && !isOverdue
+                  ? `<a href="submit.html?id=${h.id}" class="btn-secondary" style="padding:5px 12px;font-size:12px">Submit</a>`
+                  : '—'
+                }
+              </td>
+            </tr>
+          `
+        }).join('')
+      } else {
+        hwBody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted)">No homework assigned.</td></tr>'
+      }
+
+      // Load tests
+      const now = new Date().toISOString()
+      const { data: testList } = await sb
+        .from('tests')
+        .select('id, title, time_limit_minutes, available_until, subjects(name)')
+        .eq('section_id', sectionId)
+        .gte('available_until', now)
+        .order('available_until', { ascending: true })
+
+      // Get already submitted test ids
+      const { data: testSubmitted } = await sb
+        .from('test_submissions')
+        .select('test_id')
+        .eq('student_id', user.id)
+
+      const submittedTestIds = testSubmitted?.map(t => t.test_id) ?? []
+
+      const testsBody = document.getElementById('tests-list')
+      let upcomingTests = 0
+
+      if (testList && testList.length > 0) {
+        testsBody.innerHTML = testList.map(t => {
+          const until = new Date(t.available_until)
+          const isSubmitted = submittedTestIds.includes(t.id)
+          if (!isSubmitted) upcomingTests++
+
+          return `
+            <tr>
+              <td>${t.title}</td>
+              <td>${t.subjects?.name ?? '—'}</td>
+              <td>${t.time_limit_minutes} mins</td>
+              <td>${until.toLocaleDateString()}</td>
+              <td>
+                ${isSubmitted
+                  ? '<span class="badge badge-green">Done</span>'
+                  : `<a href="test.html?id=${t.id}" class="btn-secondary" style="padding:5px 12px;font-size:12px">Start Test</a>`
+                }
+              </td>
+            </tr>
+          `
+        }).join('')
+      } else {
+        testsBody.innerHTML = '<tr><td colspan="5" style="color:var(--text-muted)">No upcoming tests.</td></tr>'
+      }
+
+      // Update stats
+      document.getElementById('stat-pending').textContent   = pendingCount
+      document.getElementById('stat-submitted').textContent = submittedCount
+      document.getElementById('stat-tests').textContent     = upcomingTests
+      document.getElementById('stat-diary').textContent     = diary?.length ?? 0
+
+      // Logout
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await sb.auth.signOut()
+        window.location.href = '../index.html'
+      })
+    }
+
+    init()
+  </script>
+
+</body>
+</html>

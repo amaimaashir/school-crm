@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>School CRM — Login</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="auth-page">
+
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="logo-circle">S</div>
+      <h1>School CRM</h1>
+      <p>Sign in to your account</p>
+    </div>
+
+    <div id="error-msg" class="error-box hidden"></div>
+
+    <div class="form-group">
+      <label for="email">Email address</label>
+      <input type="email" id="email" placeholder="you@school.com" />
+    </div>
+
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" placeholder="Enter your password" />
+    </div>
+
+    <button id="login-btn" class="btn-primary">Sign In</button>
+
+    <p class="auth-footer">
+      Contact your administrator if you cannot log in.
+    </p>
+  </div>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+})
+
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      const email    = document.getElementById('email').value.trim()
+      const password = document.getElementById('password').value.trim()
+      const errorEl  = document.getElementById('error-msg')
+      const loginBtn = document.getElementById('login-btn')
+
+      errorEl.classList.add('hidden')
+
+      if (!email || !password) {
+        errorEl.textContent = 'Please enter both email and password.'
+        errorEl.classList.remove('hidden')
+        return
+      }
+
+      loginBtn.textContent = 'Signing in...'
+      loginBtn.disabled = true
+
+      const { data, error } = await sb.auth.signInWithPassword({ email, password })
+
+      if (error) {
+        errorEl.textContent = 'Incorrect email or password. Please try again.'
+        errorEl.classList.remove('hidden')
+        loginBtn.textContent = 'Sign In'
+        loginBtn.disabled = false
+        return
+      }
+
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('role')
+        .eq('id', data.user.id)
+        .single()
+
+      if (profile?.role === 'teacher') {
+        window.location.href = 'teacher/dashboard.html'
+      } else if (profile?.role === 'student') {
+        window.location.href = 'student/dashboard.html'
+      } else {
+        errorEl.textContent = 'Account not set up. Contact your administrator.'
+        errorEl.classList.remove('hidden')
+        loginBtn.textContent = 'Sign In'
+        loginBtn.disabled = false
+      }
+    })
+  </script>
+
+</body>
+</html>

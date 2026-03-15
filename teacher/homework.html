@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Homework — Teacher</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .submission-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 12px;
+    }
+    .submission-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .student-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .submitted-time {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .answer-box {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-size: 14px;
+      color: var(--text-main);
+      margin-bottom: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+    .grading-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .marks-input {
+      width: 80px;
+      padding: 7px 10px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      outline: none;
+    }
+    .marks-input:focus { border-color: var(--primary); }
+    .remarks-input {
+      flex: 1;
+      min-width: 200px;
+      padding: 7px 10px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      outline: none;
+    }
+    .remarks-input:focus { border-color: var(--primary); }
+    .save-btn {
+      padding: 7px 18px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .save-btn:hover { background: var(--primary-dark); }
+    .save-btn.saved { background: var(--success); }
+    .hw-section-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 24px 0 12px;
+    }
+  </style>
+</head>
+<body class="dashboard-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>School CRM</h2>
+      <p id="teacher-name">Loading...</p>
+    </div>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="diary.html">Diary</a>
+      <a href="homework.html" class="active">Homework</a>
+      <a href="tests.html">Tests</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-danger" id="logout-btn" style="width:100%">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <h1>Homework</h1>
+      <p>Assign homework and grade student submissions.</p>
+    </div>
+
+    <!-- ASSIGN FORM -->
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-title">New Homework Assignment</div>
+      <div id="form-msg" class="hidden"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group">
+          <label>Section</label>
+          <select id="section-select">
+            <option value="">— Select section —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Subject</label>
+          <select id="subject-select">
+            <option value="">— Select subject —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Homework Title</label>
+        <input type="text" id="hw-title" placeholder="e.g. Chapter 3 Exercise Questions" />
+      </div>
+
+      <div class="form-group">
+        <label>Description / Instructions</label>
+        <textarea id="hw-desc" placeholder="Write the homework instructions here..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label>Due Date & Time</label>
+        <input type="datetime-local" id="hw-due" />
+      </div>
+
+      <button class="btn-primary" id="submit-btn" style="width:auto;padding:10px 28px">
+        Assign Homework
+      </button>
+    </div>
+
+    <!-- HOMEWORK LIST + SUBMISSIONS -->
+    <div class="card">
+      <div class="card-title">All Assigned Homework</div>
+      <div id="homework-area">
+        <p style="color:var(--text-muted)">Loading...</p>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+})
+
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.href = '../index.html'; return }
+      const user = session.user
+
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile || profile.role !== 'teacher') {
+        window.location.href = '../index.html'
+        return
+      }
+
+      document.getElementById('teacher-name').textContent = profile.full_name
+
+      // Default due date tomorrow 11:59 PM
+      const tomorrow = new Date()
+      tomorrow.setDate(tomorrow.getDate() + 1)
+      tomorrow.setHours(23, 59, 0, 0)
+      document.getElementById('hw-due').value = tomorrow.toISOString().slice(0, 16)
+
+      // Load sections
+      const { data: sections } = await sb.from('sections').select('id, name').order('name')
+      const sectionSelect = document.getElementById('section-select')
+      sections?.forEach(s => {
+        const opt = document.createElement('option')
+        opt.value = s.id
+        opt.textContent = s.name
+        sectionSelect.appendChild(opt)
+      })
+
+      // Load subjects
+      const { data: subjects } = await sb.from('subjects').select('id, name').order('name')
+      const subjectSelect = document.getElementById('subject-select')
+      subjects?.forEach(s => {
+        const opt = document.createElement('option')
+        opt.value = s.id
+        opt.textContent = s.name
+        subjectSelect.appendChild(opt)
+      })
+
+      // Load homework with submissions
+      async function loadHomework() {
+        const { data: hwList } = await sb
+          .from('homework')
+          .select('id, title, due_date, description, subjects(name), sections(name)')
+          .eq('teacher_id', user.id)
+          .order('created_at', { ascending: false })
+
+        const area = document.getElementById('homework-area')
+
+        if (!hwList || hwList.length === 0) {
+          area.innerHTML = '<p style="color:var(--text-muted)">No homework assigned yet.</p>'
+          return
+        }
+
+        let html = ''
+
+        for (const hw of hwList) {
+          const due = new Date(hw.due_date)
+          const isOverdue = due < new Date()
+          const dueStr = due.toLocaleDateString() + ' ' + due.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+          // Load submissions for this homework
+          const { data: subs } = await sb
+            .from('homework_submissions')
+            .select('id, answer_text, submitted_at, marks_obtained, teacher_remarks, profiles(full_name)')
+            .eq('homework_id', hw.id)
+            .order('submitted_at', { ascending: true })
+
+          html += `
+            <div style="margin-bottom:28px;border-bottom:1px solid var(--border);padding-bottom:24px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div>
+                  <span style="font-size:15px;font-weight:600">${hw.title}</span>
+                  <span class="badge badge-blue" style="margin-left:8px">${hw.subjects?.name ?? '—'}</span>
+                  <span class="badge badge-purple" style="margin-left:4px">${hw.sections?.name ?? '—'}</span>
+                </div>
+                <span class="badge ${isOverdue ? 'badge-red' : 'badge-green'}">Due: ${dueStr}</span>
+              </div>
+              ${hw.description ? `<p style="font-size:13px;color:var(--text-muted);margin-bottom:10px">${hw.description}</p>` : ''}
+
+              <div class="hw-section-title">${subs?.length ?? 0} Submission${subs?.length !== 1 ? 's' : ''}</div>
+
+              ${subs && subs.length > 0 ? subs.map(sub => `
+                <div class="submission-card">
+                  <div class="submission-header">
+                    <div class="student-name">${sub.profiles?.full_name ?? 'Unknown Student'}</div>
+                    <div class="submitted-time">Submitted: ${new Date(sub.submitted_at).toLocaleString()}</div>
+                  </div>
+                  <div class="answer-box">${sub.answer_text ?? '(no answer)'}</div>
+                  <div class="grading-row">
+                    <input
+                      type="number"
+                      class="marks-input"
+                      id="marks-${sub.id}"
+                      placeholder="Marks"
+                      value="${sub.marks_obtained ?? ''}"
+                      min="0"
+                    />
+                    <input
+                      type="text"
+                      class="remarks-input"
+                      id="remarks-${sub.id}"
+                      placeholder="Add remarks (optional)"
+                      value="${sub.teacher_remarks ?? ''}"
+                    />
+                    <button class="save-btn" id="save-btn-${sub.id}" onclick="saveGrade('${sub.id}')">
+                      ${sub.marks_obtained !== null ? 'Update' : 'Save Grade'}
+                    </button>
+                  </div>
+                </div>
+              `).join('') : `<p style="color:var(--text-muted);font-size:13px">No submissions yet.</p>`}
+            </div>
+          `
+        }
+
+        area.innerHTML = html
+      }
+
+      await loadHomework()
+
+      // Save grade function
+      window.saveGrade = async function(subId) {
+        const marks   = document.getElementById(`marks-${subId}`).value
+        const remarks = document.getElementById(`remarks-${subId}`).value.trim()
+        const btn     = document.getElementById(`save-btn-${subId}`)
+
+        if (marks === '') {
+          alert('Please enter marks before saving.')
+          return
+        }
+
+        btn.textContent = 'Saving...'
+        btn.disabled = true
+
+        const { error } = await sb
+          .from('homework_submissions')
+          .update({
+            marks_obtained: parseInt(marks),
+            teacher_remarks: remarks
+          })
+          .eq('id', subId)
+
+        if (error) {
+          console.error(error)
+          btn.textContent = 'Error'
+          btn.disabled = false
+        } else {
+          btn.textContent = 'Saved ✓'
+          btn.classList.add('saved')
+          setTimeout(() => {
+            btn.textContent = 'Update'
+            btn.classList.remove('saved')
+            btn.disabled = false
+          }, 2000)
+        }
+      }
+
+      // Submit homework
+      document.getElementById('submit-btn').addEventListener('click', async () => {
+        const section_id  = sectionSelect.value
+        const subject_id  = subjectSelect.value
+        const title       = document.getElementById('hw-title').value.trim()
+        const description = document.getElementById('hw-desc').value.trim()
+        const due_date    = document.getElementById('hw-due').value
+        const msgEl       = document.getElementById('form-msg')
+
+        if (!section_id || !subject_id || !title || !due_date) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please fill in Section, Subject, Title and Due Date.'
+          return
+        }
+
+        document.getElementById('submit-btn').textContent = 'Assigning...'
+        document.getElementById('submit-btn').disabled = true
+
+        const { error } = await sb.from('homework').insert({
+          teacher_id: user.id,
+          section_id,
+          subject_id,
+          title,
+          description,
+          due_date
+        })
+
+        if (error) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Something went wrong. Please try again.'
+          console.error(error)
+        } else {
+          msgEl.className = 'success-box'
+          msgEl.textContent = 'Homework assigned successfully!'
+          document.getElementById('hw-title').value = ''
+          document.getElementById('hw-desc').value = ''
+          await loadHomework()
+        }
+
+        document.getElementById('submit-btn').textContent = 'Assign Homework'
+        document.getElementById('submit-btn').disabled = false
+      })
+
+      // Logout
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await sb.auth.signOut()
+        window.location.href = '../index.html'
+      })
+    }
+
+    init()
+  </script>
+
+</body>
+</html>

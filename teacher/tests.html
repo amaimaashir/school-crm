@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Tests — Teacher</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .question-block {
+      background: var(--bg);
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 14px;
+      position: relative;
+    }
+    .question-block .q-number {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--primary);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .remove-btn {
+      position: absolute;
+      top: 12px;
+      right: 14px;
+      background: none;
+      border: none;
+      color: var(--danger);
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 1;
+    }
+    .add-question-btn {
+      width: 100%;
+      padding: 12px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border: 2px dashed var(--primary);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 4px;
+    }
+    .add-question-btn:hover { background: #e0e7ff; }
+    .submission-card {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      margin-bottom: 12px;
+    }
+    .submission-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .student-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .submitted-time {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .answer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 12px;
+      border-radius: var(--radius);
+      margin-bottom: 6px;
+      font-size: 13px;
+      background: var(--white);
+      border: 1px solid var(--border);
+    }
+    .answer-row.correct { border-color: #86efac; background: #f0fdf4; }
+    .answer-row.wrong   { border-color: #fca5a5; background: #fef2f2; }
+    .answer-row.short   { background: var(--white); }
+    .q-label { font-weight: 500; color: var(--text-main); flex: 1; }
+    .q-answer { color: var(--text-muted); font-size: 12px; margin: 0 12px; }
+    .q-result { font-size: 11px; font-weight: 600; }
+    .score-override {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .score-input {
+      width: 80px;
+      padding: 7px 10px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      outline: none;
+    }
+    .score-input:focus { border-color: var(--primary); }
+    .save-btn {
+      padding: 7px 18px;
+      background: var(--primary);
+      color: white;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .save-btn:hover { background: var(--primary-dark); }
+    .save-btn.saved { background: #22c55e; }
+    .section-divider {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin: 24px 0 12px;
+    }
+  </style>
+</head>
+<body class="dashboard-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>School CRM</h2>
+      <p id="teacher-name">Loading...</p>
+    </div>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="diary.html">Diary</a>
+      <a href="homework.html">Homework</a>
+      <a href="tests.html" class="active">Tests</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-danger" id="logout-btn" style="width:100%">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <h1>Tests</h1>
+      <p>Create timed tests and grade student submissions.</p>
+    </div>
+
+    <!-- CREATE TEST FORM -->
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-title">Create New Test</div>
+      <div id="form-msg" class="hidden"></div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <div class="form-group">
+          <label>Section</label>
+          <select id="section-select">
+            <option value="">— Select section —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Subject</label>
+          <select id="subject-select">
+            <option value="">— Select subject —</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Test Title</label>
+        <input type="text" id="test-title" placeholder="e.g. Chapter 4 Quiz" />
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+        <div class="form-group">
+          <label>Time Limit (minutes)</label>
+          <input type="number" id="time-limit" value="30" min="5" max="180" />
+        </div>
+        <div class="form-group">
+          <label>Available From</label>
+          <input type="datetime-local" id="available-from" />
+        </div>
+        <div class="form-group">
+          <label>Available Until</label>
+          <input type="datetime-local" id="available-until" />
+        </div>
+      </div>
+
+      <div style="margin-top:8px;margin-bottom:12px">
+        <div class="card-title">Questions</div>
+        <div id="questions-container"></div>
+        <button class="add-question-btn" id="add-question-btn">+ Add Question</button>
+      </div>
+
+      <button class="btn-primary" id="submit-btn" style="width:auto;padding:10px 32px;margin-top:8px">
+        Create Test
+      </button>
+    </div>
+
+    <!-- TESTS + SUBMISSIONS -->
+    <div class="card">
+      <div class="card-title">All Tests & Submissions</div>
+      <div id="tests-area">
+        <p style="color:var(--text-muted)">Loading...</p>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+})
+
+    let questionCount = 0
+
+    function addQuestion() {
+      questionCount++
+      const qNum = questionCount
+      const container = document.getElementById('questions-container')
+      const block = document.createElement('div')
+      block.className = 'question-block'
+      block.id = `q-${qNum}`
+      block.innerHTML = `
+        <div class="q-number">Question ${qNum}</div>
+        <button class="remove-btn" onclick="removeQuestion(${qNum})">×</button>
+        <div class="form-group">
+          <label>Question Text</label>
+          <input type="text" id="q-text-${qNum}" placeholder="Write your question here..." />
+        </div>
+        <div class="form-group">
+          <label>Question Type</label>
+          <select id="q-type-${qNum}" onchange="toggleOptions(${qNum})">
+            <option value="mcq">Multiple Choice (MCQ)</option>
+            <option value="short">Short Answer</option>
+          </select>
+        </div>
+        <div id="q-options-${qNum}">
+          <div class="options-grid">
+            <div class="form-group">
+              <label>Option A</label>
+              <input type="text" id="q-a-${qNum}" placeholder="Option A" />
+            </div>
+            <div class="form-group">
+              <label>Option B</label>
+              <input type="text" id="q-b-${qNum}" placeholder="Option B" />
+            </div>
+            <div class="form-group">
+              <label>Option C</label>
+              <input type="text" id="q-c-${qNum}" placeholder="Option C" />
+            </div>
+            <div class="form-group">
+              <label>Option D</label>
+              <input type="text" id="q-d-${qNum}" placeholder="Option D" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Correct Answer</label>
+            <select id="q-correct-${qNum}">
+              <option value="A">A</option>
+              <option value="B">B</option>
+              <option value="C">C</option>
+              <option value="D">D</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Marks</label>
+          <input type="number" id="q-marks-${qNum}" value="1" min="1" max="10" style="width:80px" />
+        </div>
+      `
+      container.appendChild(block)
+    }
+
+    function removeQuestion(qNum) {
+      const block = document.getElementById(`q-${qNum}`)
+      if (block) block.remove()
+    }
+
+    function toggleOptions(qNum) {
+      const type = document.getElementById(`q-type-${qNum}`).value
+      const opts = document.getElementById(`q-options-${qNum}`)
+      opts.style.display = type === 'mcq' ? 'block' : 'none'
+    }
+
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.href = '../index.html'; return }
+      const user = session.user
+
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile || profile.role !== 'teacher') {
+        window.location.href = '../index.html'
+        return
+      }
+
+      document.getElementById('teacher-name').textContent = profile.full_name
+
+      const now = new Date()
+      const later = new Date(now.getTime() + 60 * 60 * 1000)
+      document.getElementById('available-from').value = now.toISOString().slice(0, 16)
+      document.getElementById('available-until').value = later.toISOString().slice(0, 16)
+
+      // Load sections
+      const { data: sections } = await sb.from('sections').select('id, name').order('name')
+      const sectionSelect = document.getElementById('section-select')
+      sections?.forEach(s => {
+        const opt = document.createElement('option')
+        opt.value = s.id
+        opt.textContent = s.name
+        sectionSelect.appendChild(opt)
+      })
+
+      // Load subjects
+      const { data: subjects } = await sb.from('subjects').select('id, name').order('name')
+      const subjectSelect = document.getElementById('subject-select')
+      subjects?.forEach(s => {
+        const opt = document.createElement('option')
+        opt.value = s.id
+        opt.textContent = s.name
+        subjectSelect.appendChild(opt)
+      })
+
+      addQuestion()
+      document.getElementById('add-question-btn').addEventListener('click', addQuestion)
+
+      // Load tests with submissions
+      async function loadTests() {
+        const { data: testList } = await sb
+          .from('tests')
+          .select('id, title, time_limit_minutes, available_until, subjects(name), sections(name)')
+          .eq('teacher_id', user.id)
+          .order('created_at', { ascending: false })
+
+        const area = document.getElementById('tests-area')
+
+        if (!testList || testList.length === 0) {
+          area.innerHTML = '<p style="color:var(--text-muted)">No tests created yet.</p>'
+          return
+        }
+
+        let html = ''
+
+        for (const t of testList) {
+          const until = new Date(t.available_until)
+          const isExpired = until < new Date()
+
+          // Load questions for this test
+          const { data: questions } = await sb
+            .from('questions')
+            .select('*')
+            .eq('test_id', t.id)
+            .order('created_at', { ascending: true })
+
+          // Load submissions for this test
+          const { data: subs } = await sb
+            .from('test_submissions')
+            .select('id, score, answers, submitted_at, profiles(full_name)')
+            .eq('test_id', t.id)
+            .order('submitted_at', { ascending: true })
+
+          html += `
+            <div style="margin-bottom:28px;border-bottom:1px solid var(--border);padding-bottom:24px">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+                <div>
+                  <span style="font-size:15px;font-weight:600">${t.title}</span>
+                  <span class="badge badge-blue" style="margin-left:8px">${t.subjects?.name ?? '—'}</span>
+                  <span class="badge badge-purple" style="margin-left:4px">${t.sections?.name ?? '—'}</span>
+                  <span class="badge badge-yellow" style="margin-left:4px">${t.time_limit_minutes} mins</span>
+                </div>
+                <span class="badge ${isExpired ? 'badge-red' : 'badge-green'}">
+                  Until: ${until.toLocaleDateString()}
+                </span>
+              </div>
+
+              <div class="section-divider">${subs?.length ?? 0} Submission${subs?.length !== 1 ? 's' : ''}</div>
+
+              ${subs && subs.length > 0 ? subs.map(sub => {
+                const answers = sub.answers ?? {}
+
+                const answerRows = questions?.map(q => {
+                  const studentAnswer = answers[q.id]
+                  if (q.question_type === 'mcq') {
+                    const isCorrect = studentAnswer === q.correct_answer
+                    return `
+                      <div class="answer-row ${isCorrect ? 'correct' : 'wrong'}">
+                        <span class="q-label">${q.question_text}</span>
+                        <span class="q-answer">
+                          Answer: <strong>${studentAnswer ?? 'No answer'}</strong>
+                          ${!isCorrect ? ` (Correct: ${q.correct_answer})` : ''}
+                        </span>
+                        <span class="q-result" style="color:${isCorrect ? '#15803d' : '#b91c1c'}">
+                          ${isCorrect ? `+${q.marks}` : '0'}
+                        </span>
+                      </div>
+                    `
+                  } else {
+                    return `
+                      <div class="answer-row short">
+                        <span class="q-label">${q.question_text}</span>
+                        <span class="q-answer">${studentAnswer || '(no answer)'}</span>
+                      </div>
+                    `
+                  }
+                }).join('') ?? ''
+
+                return `
+                  <div class="submission-card">
+                    <div class="submission-header">
+                      <div class="student-name">${sub.profiles?.full_name ?? 'Unknown'}</div>
+                      <div style="display:flex;align-items:center;gap:10px">
+                        <span class="badge badge-blue">Score: ${sub.score ?? 0}</span>
+                        <span class="submitted-time">${new Date(sub.submitted_at).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    ${answerRows}
+                    <div class="score-override">
+                      <span style="font-size:13px;font-weight:600;color:var(--text-muted)">Override Score:</span>
+                      <input
+                        type="number"
+                        class="score-input"
+                        id="score-${sub.id}"
+                        value="${sub.score ?? 0}"
+                        min="0"
+                      />
+                      <button class="save-btn" id="save-score-${sub.id}" onclick="saveScore('${sub.id}')">
+                        Save Score
+                      </button>
+                    </div>
+                  </div>
+                `
+              }).join('') : `<p style="color:var(--text-muted);font-size:13px">No submissions yet.</p>`}
+            </div>
+          `
+        }
+
+        area.innerHTML = html
+      }
+
+      await loadTests()
+
+      // Save score override
+      window.saveScore = async function(subId) {
+        const score = document.getElementById(`score-${subId}`).value
+        const btn   = document.getElementById(`save-score-${subId}`)
+
+        btn.textContent = 'Saving...'
+        btn.disabled = true
+
+        const { error } = await sb
+          .from('test_submissions')
+          .update({ score: parseInt(score) })
+          .eq('id', subId)
+
+        if (error) {
+          console.error(error)
+          btn.textContent = 'Error'
+          btn.disabled = false
+        } else {
+          btn.textContent = 'Saved ✓'
+          btn.classList.add('saved')
+          setTimeout(() => {
+            btn.textContent = 'Save Score'
+            btn.classList.remove('saved')
+            btn.disabled = false
+          }, 2000)
+        }
+      }
+
+      // Submit test
+      document.getElementById('submit-btn').addEventListener('click', async () => {
+        const section_id      = sectionSelect.value
+        const subject_id      = subjectSelect.value
+        const title           = document.getElementById('test-title').value.trim()
+        const time_limit      = parseInt(document.getElementById('time-limit').value)
+        const available_from  = document.getElementById('available-from').value
+        const available_until = document.getElementById('available-until').value
+        const msgEl           = document.getElementById('form-msg')
+
+        if (!section_id || !subject_id || !title || !available_from || !available_until) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please fill in all test details.'
+          return
+        }
+
+        const qBlocks = document.querySelectorAll('.question-block')
+        if (qBlocks.length === 0) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please add at least one question.'
+          return
+        }
+
+        const questions = []
+        let valid = true
+
+        qBlocks.forEach(block => {
+          const id    = block.id.replace('q-', '')
+          const text  = document.getElementById(`q-text-${id}`)?.value.trim()
+          const type  = document.getElementById(`q-type-${id}`)?.value
+          const marks = parseInt(document.getElementById(`q-marks-${id}`)?.value ?? 1)
+
+          if (!text) { valid = false; return }
+
+          const q = { question_text: text, question_type: type, marks }
+
+          if (type === 'mcq') {
+            q.option_a       = document.getElementById(`q-a-${id}`)?.value.trim()
+            q.option_b       = document.getElementById(`q-b-${id}`)?.value.trim()
+            q.option_c       = document.getElementById(`q-c-${id}`)?.value.trim()
+            q.option_d       = document.getElementById(`q-d-${id}`)?.value.trim()
+            q.correct_answer = document.getElementById(`q-correct-${id}`)?.value
+          }
+
+          questions.push(q)
+        })
+
+        if (!valid) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please fill in all question texts.'
+          return
+        }
+
+        document.getElementById('submit-btn').textContent = 'Creating...'
+        document.getElementById('submit-btn').disabled = true
+
+        const { data: testData, error: testError } = await sb
+          .from('tests')
+          .insert({
+            teacher_id: user.id,
+            section_id,
+            subject_id,
+            title,
+            time_limit_minutes: time_limit,
+            available_from,
+            available_until
+          })
+          .select()
+          .single()
+
+        if (testError) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Error creating test. Please try again.'
+          console.error(testError)
+          document.getElementById('submit-btn').textContent = 'Create Test'
+          document.getElementById('submit-btn').disabled = false
+          return
+        }
+
+        const questionsWithTestId = questions.map(q => ({ ...q, test_id: testData.id }))
+        const { error: qError } = await sb.from('questions').insert(questionsWithTestId)
+
+        if (qError) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Test created but questions failed. Please try again.'
+          console.error(qError)
+        } else {
+          msgEl.className = 'success-box'
+          msgEl.textContent = 'Test created successfully!'
+          document.getElementById('test-title').value = ''
+          document.getElementById('questions-container').innerHTML = ''
+          questionCount = 0
+          addQuestion()
+          await loadTests()
+        }
+
+        document.getElementById('submit-btn').textContent = 'Create Test'
+        document.getElementById('submit-btn').disabled = false
+      })
+
+      // Logout
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await sb.auth.signOut()
+        window.location.href = '../index.html'
+      })
+    }
+
+    init()
+  </script>
+
+</body>
+</html>

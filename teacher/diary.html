@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Diary — Teacher</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="dashboard-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>School CRM</h2>
+      <p id="teacher-name">Loading...</p>
+    </div>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="diary.html" class="active">Diary</a>
+      <a href="homework.html">Homework</a>
+      <a href="tests.html">Tests</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-danger" id="logout-btn" style="width:100%">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <h1>Diary</h1>
+      <p>Write and share daily notes with your class sections.</p>
+    </div>
+
+    <div class="card" style="margin-bottom:24px">
+      <div class="card-title">New Diary Entry</div>
+      <div id="form-msg" class="hidden"></div>
+
+      <div class="form-group">
+        <label>Section</label>
+        <select id="section-select">
+          <option value="">— Select section —</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Subject</label>
+        <select id="subject-select">
+          <option value="">— Select subject —</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="entry-date" />
+      </div>
+
+      <div class="form-group">
+        <label>Diary Content</label>
+        <textarea id="diary-content" placeholder="Write today's diary entry here..."></textarea>
+      </div>
+
+      <button class="btn-primary" id="submit-btn" style="width:auto;padding:10px 28px">
+        Post Diary Entry
+      </button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Past Entries</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Subject</th>
+              <th>Section</th>
+              <th>Content</th>
+            </tr>
+          </thead>
+          <tbody id="diary-list">
+            <tr><td colspan="4" style="color:var(--text-muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+})
+
+    async function init() {
+      // Check session
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.href = '../index.html'; return }
+
+      const user = session.user
+
+      // Get profile
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile || profile.role !== 'teacher') {
+        window.location.href = '../index.html'
+        return
+      }
+
+      document.getElementById('teacher-name').textContent = profile.full_name
+      document.getElementById('entry-date').value = new Date().toISOString().split('T')[0]
+
+      // Load sections
+      const { data: sections } = await sb.from('sections').select('id, name').order('name')
+      const sectionSelect = document.getElementById('section-select')
+      sections?.forEach(s => {
+        const opt = document.createElement('option')
+        opt.value = s.id
+        opt.textContent = s.name
+        sectionSelect.appendChild(opt)
+      })
+
+      // Load subjects
+      const { data: subjects } = await sb.from('subjects').select('id, name').order('name')
+      const subjectSelect = document.getElementById('subject-select')
+      subjects?.forEach(s => {
+        const opt = document.createElement('option')
+        opt.value = s.id
+        opt.textContent = s.name
+        subjectSelect.appendChild(opt)
+      })
+
+      // Load past entries
+      async function loadEntries() {
+        const { data: entries } = await sb
+          .from('diary_entries')
+          .select('entry_date, content, subjects(name), sections(name)')
+          .eq('teacher_id', user.id)
+          .order('entry_date', { ascending: false })
+          .limit(20)
+
+        const tbody = document.getElementById('diary-list')
+        if (entries && entries.length > 0) {
+          tbody.innerHTML = entries.map(e => `
+            <tr>
+              <td>${new Date(e.entry_date).toLocaleDateString()}</td>
+              <td>${e.subjects?.name ?? '—'}</td>
+              <td>${e.sections?.name ?? '—'}</td>
+              <td style="max-width:320px">${e.content}</td>
+            </tr>
+          `).join('')
+        } else {
+          tbody.innerHTML = '<tr><td colspan="4" style="color:var(--text-muted)">No entries yet.</td></tr>'
+        }
+      }
+
+      await loadEntries()
+
+      // Submit
+      document.getElementById('submit-btn').addEventListener('click', async () => {
+        const section_id = sectionSelect.value
+        const subject_id = subjectSelect.value
+        const entry_date = document.getElementById('entry-date').value
+        const content    = document.getElementById('diary-content').value.trim()
+        const msgEl      = document.getElementById('form-msg')
+
+        if (!section_id || !subject_id || !entry_date || !content) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Please fill in all fields.'
+          return
+        }
+
+        document.getElementById('submit-btn').textContent = 'Posting...'
+        document.getElementById('submit-btn').disabled = true
+
+        const { error } = await sb.from('diary_entries').insert({
+          teacher_id: user.id,
+          section_id,
+          subject_id,
+          entry_date,
+          content
+        })
+
+        if (error) {
+          msgEl.className = 'error-box'
+          msgEl.textContent = 'Something went wrong. Please try again.'
+          console.error(error)
+        } else {
+          msgEl.className = 'success-box'
+          msgEl.textContent = 'Diary entry posted successfully!'
+          document.getElementById('diary-content').value = ''
+          await loadEntries()
+        }
+
+        document.getElementById('submit-btn').textContent = 'Post Diary Entry'
+        document.getElementById('submit-btn').disabled = false
+      })
+
+      // Logout
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await sb.auth.signOut()
+        window.location.href = '../index.html'
+      })
+    }
+
+    init()
+  </script>
+
+</body>
+</html>

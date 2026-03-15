@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Take Test</title>
+  <link rel="stylesheet" href="../css/style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    .timer-bar {
+      position: sticky;
+      top: 0;
+      background: var(--white);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 0;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 10;
+    }
+    .timer-label {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+    .timer-count {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--primary);
+      font-variant-numeric: tabular-nums;
+    }
+    .timer-count.urgent { color: var(--danger); }
+    .question-card {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      margin-bottom: 16px;
+      box-shadow: var(--shadow);
+    }
+    .question-card .q-num {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 8px;
+    }
+    .question-card .q-text {
+      font-size: 15px;
+      font-weight: 500;
+      color: var(--text-main);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .option-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border: 1.5px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .option-label:hover {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+    .option-label input[type="radio"] {
+      accent-color: var(--primary);
+      width: 16px;
+      height: 16px;
+      flex-shrink: 0;
+    }
+    .option-label.selected {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+    .marks-badge {
+      float: right;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      background: var(--bg);
+      padding: 2px 8px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+    .result-card {
+      text-align: center;
+      padding: 40px 20px;
+    }
+    .result-score {
+      font-size: 64px;
+      font-weight: 700;
+      color: var(--primary);
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .result-total {
+      font-size: 18px;
+      color: var(--text-muted);
+      margin-bottom: 24px;
+    }
+  </style>
+</head>
+<body class="dashboard-layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>School CRM</h2>
+      <p id="student-name">Loading...</p>
+      <p id="student-section" style="font-size:11px;color:var(--primary);font-weight:600"></p>
+    </div>
+    <nav>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="submit.html">Homework</a>
+      <a href="test.html" class="active">Tests</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-danger" id="logout-btn" style="width:100%">Logout</button>
+    </div>
+  </aside>
+
+  <main class="main-content">
+    <div class="page-header">
+      <h1>Tests</h1>
+      <p>Complete your assigned tests before the deadline.</p>
+    </div>
+    <div id="main-area">
+      <p style="color:var(--text-muted)">Loading...</p>
+    </div>
+  </main>
+
+  <script>
+    const SUPABASE_URL = 'https://rutzmfdlflrxcudafgfq.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJ1dHptZmRsZmxyeGN1ZGFmZ2ZxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1MDA4NjAsImV4cCI6MjA4OTA3Njg2MH0.4-4MiVh-ehqSQySuqxP6zp3U2I2WBdvfm3qIN7GiH3s'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession: true,
+    autoRefreshToken: true,
+    storage: window.localStorage
+  }
+})
+
+    let timerInterval = null
+
+    async function init() {
+      const { data: { session } } = await sb.auth.getSession()
+      if (!session) { window.location.href = '../index.html'; return }
+      const user = session.user
+
+      const { data: profile } = await sb
+        .from('profiles')
+        .select('full_name, role')
+        .eq('id', user.id)
+        .single()
+
+      if (!profile || profile.role !== 'student') {
+        window.location.href = '../index.html'
+        return
+      }
+
+      document.getElementById('student-name').textContent = profile.full_name
+
+      const { data: sp } = await sb
+        .from('student_profiles')
+        .select('section_id, sections(name)')
+        .eq('profile_id', user.id)
+        .single()
+
+      document.getElementById('student-section').textContent = sp?.sections?.name ?? ''
+
+      const mainArea = document.getElementById('main-area')
+      const params = new URLSearchParams(window.location.search)
+      const testId = params.get('id')
+
+      if (testId) {
+        await showTestPage(testId, user, mainArea)
+      } else {
+        await showTestList(sp?.section_id, user, mainArea)
+      }
+
+      document.getElementById('logout-btn').addEventListener('click', async () => {
+        await sb.auth.signOut()
+        window.location.href = '../index.html'
+      })
+    }
+
+    async function showTestList(sectionId, user, mainArea) {
+      const now = new Date().toISOString()
+
+      const { data: testList } = await sb
+        .from('tests')
+        .select('id, title, time_limit_minutes, available_from, available_until, subjects(name)')
+        .eq('section_id', sectionId)
+        .order('available_until', { ascending: true })
+
+      const { data: submitted } = await sb
+        .from('test_submissions')
+        .select('test_id, score')
+        .eq('student_id', user.id)
+
+      const submittedMap = {}
+      submitted?.forEach(s => { submittedMap[s.test_id] = s.score })
+
+      if (!testList || testList.length === 0) {
+        mainArea.innerHTML = '<div class="card"><p style="color:var(--text-muted)">No tests assigned yet.</p></div>'
+        return
+      }
+
+      mainArea.innerHTML = `
+        <div class="card">
+          <div class="card-title">All Tests</div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Subject</th>
+                  <th>Time Limit</th>
+                  <th>Available Until</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${testList.map(t => {
+                  const until = new Date(t.available_until)
+                  const from  = new Date(t.available_from)
+                  const isExpired  = until < new Date()
+                  const notStarted = from > new Date()
+                  const isDone = t.id in submittedMap
+
+                  let statusBadge = ''
+                  let action = '—'
+
+                  if (isDone) {
+                    statusBadge = `<span class="badge badge-green">Done — ${submittedMap[t.id] ?? 0} pts</span>`
+                  } else if (isExpired) {
+                    statusBadge = '<span class="badge badge-red">Expired</span>'
+                  } else if (notStarted) {
+                    statusBadge = '<span class="badge badge-yellow">Not open yet</span>'
+                  } else {
+                    statusBadge = '<span class="badge badge-blue">Available</span>'
+                    action = `<a href="test.html?id=${t.id}" class="btn-secondary" style="padding:5px 12px;font-size:12px">Start Test</a>`
+                  }
+
+                  return `
+                    <tr>
+                      <td>${t.title}</td>
+                      <td>${t.subjects?.name ?? '—'}</td>
+                      <td>${t.time_limit_minutes} mins</td>
+                      <td>${until.toLocaleDateString()}</td>
+                      <td>${statusBadge}</td>
+                      <td>${action}</td>
+                    </tr>
+                  `
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `
+    }
+
+    async function showTestPage(testId, user, mainArea) {
+      // Load test details
+      const { data: test } = await sb
+        .from('tests')
+        .select('id, title, time_limit_minutes, available_from, available_until, subjects(name)')
+        .eq('id', testId)
+        .single()
+
+      if (!test) {
+        mainArea.innerHTML = '<div class="card"><p>Test not found.</p></div>'
+        return
+      }
+
+      // Check if already submitted
+      const { data: existing } = await sb
+        .from('test_submissions')
+        .select('id, score, answers, submitted_at')
+        .eq('test_id', testId)
+        .eq('student_id', user.id)
+        .single()
+
+      if (existing) {
+        showTestResult(test, existing, mainArea)
+        return
+      }
+
+      // Check availability
+      const now = new Date()
+      if (now > new Date(test.available_until)) {
+        mainArea.innerHTML = `
+          <div class="card">
+            <div class="error-box">This test has expired. You can no longer take it.</div>
+            <a href="test.html" class="btn-secondary" style="display:inline-block;margin-top:12px">← Back to Tests</a>
+          </div>`
+        return
+      }
+
+      // Load questions
+      const { data: questions } = await sb
+        .from('questions')
+        .select('*')
+        .eq('test_id', testId)
+        .order('created_at', { ascending: true })
+
+      if (!questions || questions.length === 0) {
+        mainArea.innerHTML = '<div class="card"><p>No questions found for this test.</p></div>'
+        return
+      }
+
+      // Get or set timer start in localStorage
+      const timerKey = `test_timer_${testId}`
+      let startTime = localStorage.getItem(timerKey)
+      if (!startTime) {
+        startTime = Date.now()
+        localStorage.setItem(timerKey, startTime)
+      } else {
+        startTime = parseInt(startTime)
+      }
+
+      const totalSeconds = test.time_limit_minutes * 60
+
+      // Render test
+      mainArea.innerHTML = `
+        <div class="timer-bar">
+          <div>
+            <div class="timer-label">Time Remaining — ${test.title}</div>
+            <div style="font-size:12px;color:var(--text-muted)">${test.subjects?.name ?? ''}</div>
+          </div>
+          <div class="timer-count" id="timer-display">--:--</div>
+        </div>
+
+        <div id="questions-area">
+          ${questions.map((q, i) => `
+            <div class="question-card">
+              <div class="q-num">Question ${i + 1} <span class="marks-badge">${q.marks} mark${q.marks > 1 ? 's' : ''}</span></div>
+              <div class="q-text">${q.question_text}</div>
+
+              ${q.question_type === 'mcq' ? `
+                ${['A','B','C','D'].map(opt => {
+                  const optText = q[`option_${opt.toLowerCase()}`]
+                  if (!optText) return ''
+                  return `
+                    <label class="option-label" id="opt-${q.id}-${opt}">
+                      <input type="radio" name="q-${q.id}" value="${opt}"
+                        onchange="selectOption('${q.id}', '${opt}')">
+                      <span><strong>${opt}.</strong> ${optText}</span>
+                    </label>
+                  `
+                }).join('')}
+              ` : `
+                <textarea
+                  id="short-${q.id}"
+                  placeholder="Write your answer here..."
+                  style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius);font-size:14px;min-height:100px;resize:vertical;outline:none"
+                  onfocus="this.style.borderColor='var(--primary)'"
+                  onblur="this.style.borderColor='var(--border)'"
+                ></textarea>
+              `}
+            </div>
+          `).join('')}
+        </div>
+
+        <div style="margin-top:8px;margin-bottom:32px">
+          <button class="btn-primary" id="submit-test-btn" style="width:auto;padding:12px 36px;font-size:16px">
+            Submit Test
+          </button>
+          <p style="font-size:12px;color:var(--text-muted);margin-top:8px">
+            Make sure you have answered all questions before submitting.
+          </p>
+        </div>
+      `
+
+      // Timer logic
+      function updateTimer() {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000)
+        const remaining = totalSeconds - elapsed
+
+        if (remaining <= 0) {
+          clearInterval(timerInterval)
+          document.getElementById('timer-display').textContent = '00:00'
+          autoSubmit(testId, user, questions, test, mainArea)
+          return
+        }
+
+        const mins = Math.floor(remaining / 60)
+        const secs = remaining % 60
+        const display = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`
+        const timerEl = document.getElementById('timer-display')
+        if (timerEl) {
+          timerEl.textContent = display
+          if (remaining < 300) timerEl.classList.add('urgent')
+        }
+      }
+
+      updateTimer()
+      timerInterval = setInterval(updateTimer, 1000)
+
+      // Submit button
+      document.getElementById('submit-test-btn').addEventListener('click', () => {
+        if (confirm('Are you sure you want to submit the test? You cannot change answers after submitting.')) {
+          clearInterval(timerInterval)
+          autoSubmit(testId, user, questions, test, mainArea)
+        }
+      })
+    }
+
+    function selectOption(questionId, option) {
+      // Highlight selected option
+      ['A','B','C','D'].forEach(opt => {
+        const el = document.getElementById(`opt-${questionId}-${opt}`)
+        if (el) el.classList.remove('selected')
+      })
+      const selected = document.getElementById(`opt-${questionId}-${option}`)
+      if (selected) selected.classList.add('selected')
+    }
+
+    async function autoSubmit(testId, user, questions, test, mainArea) {
+      // Collect answers
+      const answers = {}
+      let score = 0
+
+      questions.forEach(q => {
+        if (q.question_type === 'mcq') {
+          const selected = document.querySelector(`input[name="q-${q.id}"]:checked`)
+          const answer = selected ? selected.value : null
+          answers[q.id] = answer
+
+          // Auto grade MCQ
+          if (answer && answer === q.correct_answer) {
+            score += q.marks
+          }
+        } else {
+          const textEl = document.getElementById(`short-${q.id}`)
+          answers[q.id] = textEl ? textEl.value.trim() : ''
+        }
+      })
+
+      // Save to Supabase
+      const { error } = await sb.from('test_submissions').insert({
+        test_id:      testId,
+        student_id:   user.id,
+        answers:      answers,
+        score:        score,
+        submitted_at: new Date().toISOString()
+      })
+
+      // Clear timer from localStorage
+      localStorage.removeItem(`test_timer_${testId}`)
+
+      if (error) {
+        console.error(error)
+        alert('Error submitting test. Please try again.')
+        return
+      }
+
+      // Show result
+      showTestResult(test, { score, answers }, mainArea)
+    }
+
+    function showTestResult(test, submission, mainArea) {
+      clearInterval(timerInterval)
+      mainArea.innerHTML = `
+        <div class="card result-card">
+          <div style="font-size:14px;color:var(--text-muted);margin-bottom:8px">${test.title}</div>
+          <div class="result-score">${submission.score ?? 0}</div>
+          <div class="result-total">points scored</div>
+          <div class="success-box" style="display:inline-block;margin-bottom:24px">
+            Test submitted successfully!
+          </div>
+          <br/>
+          <a href="test.html" class="btn-secondary">← Back to Tests</a>
+        </div>
+      `
+    }
+
+    init()
+  </script>
+
+</body>
+</html>
